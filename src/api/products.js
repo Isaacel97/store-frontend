@@ -31,3 +31,7 @@ export const getInventoryByProduct = async (productId) => {
   return res.data;
 };
 
+export const adjustStock = async (id, quantity_change, reason, user_id) => {
+  const res = await axios.post(`${API_URL}/products/${id}/stock`, { quantity_change, reason, user_id }, { headers: headers() });
+  return res.data;
+};

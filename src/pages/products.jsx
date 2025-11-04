@@ -1,18 +1,33 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Table, Button, Modal, Form, Container, Row, Col, Dropdown, InputGroup } from "react-bootstrap";
-import { BsThreeDotsVertical, BsSearch, BsArrowUp, BsArrowDown } from "react-icons/bs";
+import { BsThreeDotsVertical, BsSearch, BsArrowUp, BsArrowDown, BsPlusLg } from "react-icons/bs";
 import ProtectedRoute from "../components/ProtectedRoute";
 import Sidebar from "../components/Sidebar";
-import { getProducts, createProduct, updateProduct, deleteProduct, getInventory } from "../api/products";
+import { getProducts, createProduct, updateProduct, deleteProduct, getInventory, adjustStock } from "../api/products";
+import { useRouter } from "next/router";
 
 export default function ProductsPage() {
+  const INITIAL_FORM = { sku: "", name: "", price: 0, type: "", status: "active", initial_stock: 0, image_url: "" };
+  const DEFAULT_IMAGE = "https://png.pngtree.com/element_our/20190528/ourmid/pngtree-no-photo-icon-image_1128432.jpg";
   const [products, setProducts] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
-  const [formData, setFormData] = useState({ sku: "", name: "", price: 0, type: "", status: "active", initial_stock: 0 });
+  const [formData, setFormData] = useState(INITIAL_FORM);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+  const [showStockModal, setShowStockModal] = useState(false);
+  const [stockProduct, setStockProduct] = useState(null);
+  const [stockData, setStockData] = useState({ quantity_change: 0, reason: "" });
+  const router = useRouter();
+  const user = JSON.parse(localStorage.getItem("me") || "{}");
+  console.log("Logged user:", user);
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("me");
+    router.push("/login");
+  };
 
   const fetchAll = async () => {
     try {
@@ -28,17 +43,29 @@ export default function ProductsPage() {
 
   useEffect(() => { fetchAll(); }, []);
 
+  const stockMap = useMemo(
+    () => Object.fromEntries(inventory.map(item => [item.product_id, item.quantity])),
+    [inventory]
+  );
+
+  const findStock = (id) => stockMap[id] ?? 0;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const dataToSend = {
+      ...formData,
+      price: parseFloat(formData.price) || 0,
+      initial_stock: parseInt(formData.initial_stock) || 0,
+    };
+
     try {
-      if (editProduct) {
-        await updateProduct(editProduct.id, formData);
-      } else {
-        await createProduct(formData);
-      }
+      editProduct
+        ? await updateProduct(editProduct.id, dataToSend)
+        : await createProduct(dataToSend);
       setShowModal(false);
       setEditProduct(null);
-      setFormData({ sku: "", name: "", price: 0, type: "", status: "active", initial_stock: 0 });
+      setFormData(INITIAL_FORM);
       fetchAll();
     } catch (err) {
       console.error(err);
@@ -48,7 +75,7 @@ export default function ProductsPage() {
 
   const handleEdit = (p) => {
     setEditProduct(p);
-    setFormData({ sku: p.sku, name: p.name, price: p.price, type: p.type, status: p.status });
+    setFormData({...p, image_url: p.image_url || DEFAULT_IMAGE });
     setShowModal(true);
   };
 
@@ -63,39 +90,78 @@ export default function ProductsPage() {
     }
   };
 
-  const findStock = (productId) => {
-    const row = inventory.find(i => i.product_id === productId || i.product_id == productId);
-    return row ? row.quantity : 0;
-  };
+  // Filtrado de productos
+  const filteredProducts = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return products.filter((p) => p.name.toLowerCase().includes(term) || p.sku.toLowerCase().includes(term));
+  }, [products, searchTerm]);
 
-  // 🔍 Filtrado de productos
-  const filteredProducts = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.sku.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
-  // 🔄 Ordenamiento de columnas
-  const sortedProducts = [...filteredProducts].sort((a, b) => {
-    if (!sortConfig.key) return 0;
-    const aVal = sortConfig.key === "stock" ? findStock(a.id) : a[sortConfig.key];
-    const bVal = sortConfig.key === "stock" ? findStock(b.id) : b[sortConfig.key];
-    if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
-    if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
-    return 0;
-  });
+  // Ordenamiento de columnas
+  const sortedProducts = useMemo(() => {
+    if (!sortConfig.key) return filteredProducts;
+    return [...filteredProducts].sort((a, b) => {
+      const aVal = sortConfig.key === "stock" ? findStock(a.id) : a[sortConfig.key];
+      const bVal = sortConfig.key === "stock" ? findStock(b.id) : b[sortConfig.key];
+      
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        return sortConfig.direction === "asc" ? aVal - bVal : bVal - aVal;
+      }
+
+      return sortConfig.direction === "asc"
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
+    });
+  }, [filteredProducts, sortConfig, inventory]);
 
   const handleSort = (key) => {
-    let direction = "asc";
-    if (sortConfig.key === key && sortConfig.direction === "asc") {
-      direction = "desc";
-    }
-    setSortConfig({ key, direction });
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }));
   };
+
+  const handleStock = (p) => {
+    setStockProduct(p);
+    setStockData({ quantity_change: 0, reason: "" });
+    setShowStockModal(true);
+  };
+
+  const submitStock = async (e) => {
+    e.preventDefault();
+    try {
+      await adjustStock(stockProduct.id, Number(stockData.quantity_change), stockData.reason, 1);
+      setShowStockModal(false);
+      fetchAll();
+    } catch {
+      alert("Error ajustando stock");
+    }
+  };
+
 
   const renderSortIcon = (key) => {
     if (sortConfig.key !== key) return null;
     return sortConfig.direction === "asc" ? <BsArrowUp /> : <BsArrowDown />;
+  };
+
+  const renderStatusBadge = (status) => {
+    const isActive = status === "active";
+    return (
+      <span
+        style={{
+          display: "inline-block",
+          padding: "6px 14px",
+          borderRadius: "20px",
+          fontWeight: "600",
+          fontSize: "0.85rem",
+          color: "white",
+          backgroundColor: isActive ? "#28a745" : "#dc3545", // Verde o rojo
+          textTransform: "capitalize"
+        }}
+      >
+        {isActive ? "Activo" : "Inactivo"}
+      </span>
+    );
   };
 
   return (
@@ -103,6 +169,7 @@ export default function ProductsPage() {
       <div className="d-flex">
         <Sidebar />
         <Container className="mt-3">
+          {/* Search */}
           <Row className="align-items-center mb-3">
             <Col md={6}>
               <InputGroup className="rounded-pill overflow-hidden shadow-sm">
@@ -118,31 +185,55 @@ export default function ProductsPage() {
                 />
               </InputGroup>
             </Col>
+
+            {/* Perfil de usuario */}
+            <Col md={6} className="text-end">
+              <Dropdown align="end">
+                <Dropdown.Toggle
+                  variant="light"
+                  className="shadow-sm d-flex align-items-center"
+                  style={{ borderRadius: "30px", padding: "8px 14px" }}
+                >
+                  <div className="text-start me-2" style={{ lineHeight: "1.1" }}>
+                    <strong>{user.username || "Usuario"}</strong>
+                    <div style={{ fontSize: "0.75rem", color: "#666" }}>Rol: {user.role}</div>
+                  </div>
+                </Dropdown.Toggle>
+
+                <Dropdown.Menu className="shadow-sm">
+                  <Dropdown.Item onClick={handleLogout} className="text-danger fw-semibold">
+                    Cerrar sesión
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown>
+            </Col>
           </Row>
 
+          {/* Title and Add Product */}
           <Row className="align-items-center mb-3">
             <Col>
               <h2 className="fw-bold text-primary">Productos</h2>
             </Col>
             <Col className="text-end">
               <Button variant="primary" onClick={() => setShowModal(true)}>
-                Agregar Producto
+                <BsPlusLg className="me-1" /> Agregar Producto
               </Button>
             </Col>
           </Row>
 
+          {/* Products Table */}
           <div className="rounded-4 overflow-hidden shadow-sm">
-            <Table striped bordered hover responsive className="m-0">
+            <Table striped hover responsive className="m-0">
               <thead className="table-light">
                 <tr>
+                  <th onClick={() => handleSort("name")} style={{ cursor: "pointer" }}>
+                    Nombre {renderSortIcon("name")}
+                  </th>
                   <th onClick={() => handleSort("id")} style={{ cursor: "pointer" }}>
                     ID {renderSortIcon("id")}
                   </th>
                   <th onClick={() => handleSort("sku")} style={{ cursor: "pointer" }}>
                     SKU {renderSortIcon("sku")}
-                  </th>
-                  <th onClick={() => handleSort("name")} style={{ cursor: "pointer" }}>
-                    Nombre {renderSortIcon("name")}
                   </th>
                   <th onClick={() => handleSort("price")} style={{ cursor: "pointer" }}>
                     Precio {renderSortIcon("price")}
@@ -159,17 +250,31 @@ export default function ProductsPage() {
                   <th>Acciones</th>
                 </tr>
               </thead>
+              {/* Table Body */}
               <tbody>
                 {sortedProducts.length > 0 ? (
                   sortedProducts.map((p) => (
                     <tr key={p.id}>
+                      <td className="d-flex align-items-center gap-2">
+                        <img
+                          src={p.image_url || DEFAULT_IMAGE}
+                          alt={p.name}
+                          style={{
+                            width: "40px",
+                            height: "40px",
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                            border: "1px solid #ddd"
+                          }}
+                        />
+                        {p.name}
+                      </td>
                       <td>{p.id}</td>
                       <td>{p.sku}</td>
-                      <td>{p.name}</td>
                       <td>{Number(p.price).toFixed(2)}</td>
                       <td>{findStock(p.id)}</td>
                       <td>{p.type}</td>
-                      <td>{p.status}</td>
+                      <td>{renderStatusBadge(p.status)}</td>
                       <td className="text-center">
                         <Dropdown align="end">
                           <Dropdown.Toggle
@@ -182,6 +287,7 @@ export default function ProductsPage() {
                           </Dropdown.Toggle>
                           <Dropdown.Menu>
                             <Dropdown.Item onClick={() => handleEdit(p)}>✏️ Editar</Dropdown.Item>
+                            <Dropdown.Item onClick={() => handleStock(p)}>📦 Stock</Dropdown.Item>
                             <Dropdown.Item onClick={() => handleDelete(p.id)}>🗑️ Eliminar</Dropdown.Item>
                           </Dropdown.Menu>
                         </Dropdown>
@@ -199,8 +305,8 @@ export default function ProductsPage() {
             </Table>
           </div>
 
-          {/* Modal */}
-          <Modal show={showModal} onHide={() => { setShowModal(false); setEditProduct(null); }}>
+          {/* Modal Product */}
+          <Modal show={showModal} onHide={() => { setShowModal(false); setEditProduct(null); setFormData(INITIAL_FORM); }}>
             <Modal.Header closeButton>
               <Modal.Title>{editProduct ? "Editar" : "Agregar"} Producto</Modal.Title>
             </Modal.Header>
@@ -216,14 +322,12 @@ export default function ProductsPage() {
                 </Form.Group>
                 <Form.Group className="mb-2">
                   <Form.Label>Precio</Form.Label>
-                  <Form.Control type="number" step="0.01" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} required />
+                  <Form.Control type="number" step="0.01" value={formData.price} onChange={e => setFormData({ ...formData, price: e.target.value })} />
                 </Form.Group>
-                {!editProduct && (
-                  <Form.Group className="mb-2">
-                    <Form.Label>Stock inicial</Form.Label>
-                    <Form.Control type="number" value={formData.initial_stock} onChange={e => setFormData({ ...formData, initial_stock: Number(e.target.value) })} />
-                  </Form.Group>
-                )}
+                <Form.Group className="mb-2">
+                  <Form.Label>Stock inicial</Form.Label>
+                  <Form.Control type="number" value={formData.initial_stock} onChange={e => setFormData({ ...formData, initial_stock: e.target.value})} />
+                </Form.Group>
                 <Form.Group className="mb-2">
                   <Form.Label>Tipo</Form.Label>
                   <Form.Control value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })} />
@@ -235,8 +339,51 @@ export default function ProductsPage() {
                     <option value="inactive">Inactivo</option>
                   </Form.Select>
                 </Form.Group>
+                <Form.Group className="mb-2">
+                  <Form.Label>URL de imagen (opcional)</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={formData.image_url}
+                    onChange={e => setFormData({ ...formData, image_url: e.target.value })}
+                    placeholder="https://example.com/product-image.jpg"
+                  />
+                </Form.Group>
                 <div className="text-end">
                   <Button type="submit">{editProduct ? "Actualizar" : "Crear"}</Button>
+                </div>
+              </Form>
+            </Modal.Body>
+          </Modal>
+
+          <Modal show={showStockModal} onHide={() => setShowStockModal(false)}>
+            <Modal.Header closeButton>
+              <Modal.Title>
+                Ajustar Stock – {stockProduct?.name} ({stockProduct?.sku})
+              </Modal.Title>
+            </Modal.Header>
+            <Modal.Body>
+              <Form onSubmit={submitStock}>
+                <Form.Group className="mb-2">
+                  <Form.Label>Cambio en cantidad (positivo o negativo)</Form.Label>
+                  <Form.Control
+                    type="number"
+                    value={stockData.quantity_change}
+                    onChange={e => setStockData({ ...stockData, quantity_change: e.target.value })}
+                    required
+                  />
+                </Form.Group>
+                <Form.Group className="mb-2">
+                  <Form.Label>Motivo</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={stockData.reason}
+                    onChange={e => setStockData({ ...stockData, reason: e.target.value })}
+                    placeholder="Ej. Llegó mercancía, devolución, ajuste..."
+                    required
+                  />
+                </Form.Group>
+                <div className="text-end">
+                  <Button variant="primary" type="submit">Guardar</Button>
                 </div>
               </Form>
             </Modal.Body>
