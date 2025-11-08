@@ -1,10 +1,10 @@
 import { useEffect, useState, useMemo } from "react";
-import { Table, Button, Modal, Form, Container, Row, Col, Dropdown, InputGroup } from "react-bootstrap";
-import { BsThreeDotsVertical, BsSearch, BsArrowUp, BsArrowDown, BsPlusLg } from "react-icons/bs";
-import ProtectedRoute from "../components/ProtectedRoute";
-import Sidebar from "../components/Sidebar";
+import { Button, Modal, Form, Container, Row, Col, Dropdown } from "react-bootstrap";
+import { BsThreeDotsVertical, BsArrowUp, BsArrowDown, BsPlusLg } from "react-icons/bs";
 import { getProducts, createProduct, updateProduct, deleteProduct, getInventory, adjustStock } from "../api/products";
 import { useRouter } from "next/router";
+import { ProtectedRoute, Sidebar, ToastComponent, PanelContainer, Header } from "@/components";
+import { exportToExcel } from "../utils/exportExcel";
 
 export default function ProductsPage() {
   const INITIAL_FORM = { sku: "", name: "", price: 0, type: "", status: "active", initial_stock: 0, image_url: "" };
@@ -20,8 +20,17 @@ export default function ProductsPage() {
   const [stockProduct, setStockProduct] = useState(null);
   const [stockData, setStockData] = useState({ quantity_change: 0, reason: "" });
   const router = useRouter();
-  const user = JSON.parse(localStorage.getItem("me") || "{}");
-  console.log("Logged user:", user);
+  const [user, setUser] = useState({});
+  const [toast, setToast] = useState({
+    show: false,
+    message: "",
+    type: "error",
+  });
+
+  useEffect(() => {
+    const storedUser = JSON.parse(localStorage.getItem("me") || "{}");
+    setUser(storedUser);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -37,7 +46,11 @@ export default function ProductsPage() {
       setInventory(inv);
     } catch (err) {
       console.error(err);
-      alert("Error cargando productos");
+      setToast({
+        show: true,
+        message: "Error cargando productos",
+        type: "error",
+      });
     }
   };
 
@@ -69,7 +82,11 @@ export default function ProductsPage() {
       fetchAll();
     } catch (err) {
       console.error(err);
-      alert("Error guardando producto");
+      setToast({
+        show: true,
+        message: "Error guardando producto",
+        type: "error",
+      });
     }
   };
 
@@ -86,7 +103,11 @@ export default function ProductsPage() {
       fetchAll();
     } catch (err) {
       console.error(err);
-      alert("Error al eliminar");
+      setToast({
+        show: true,
+        message: "Error eliminando producto",
+        type: "error",
+      });
     }
   };
 
@@ -134,7 +155,11 @@ export default function ProductsPage() {
       setShowStockModal(false);
       fetchAll();
     } catch {
-      alert("Error ajustando stock");
+      setToast({
+        show: true,
+        message: "Error ajustando stock",
+        type: "error",
+      });
     }
   };
 
@@ -169,50 +194,23 @@ export default function ProductsPage() {
       <div className="d-flex">
         <Sidebar />
         <Container className="mt-3">
-          {/* Search */}
-          <Row className="align-items-center mb-3">
-            <Col md={6}>
-              <InputGroup className="rounded-pill overflow-hidden shadow-sm">
-                <InputGroup.Text className="bg-white border-0">
-                  <BsSearch />
-                </InputGroup.Text>
-                <Form.Control
-                  type="text"
-                  placeholder="Buscar por nombre o SKU..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="border-0"
-                />
-              </InputGroup>
-            </Col>
-
-            {/* Perfil de usuario */}
-            <Col md={6} className="text-end">
-              <Dropdown align="end">
-                <Dropdown.Toggle
-                  variant="light"
-                  className="shadow-sm d-flex align-items-center"
-                  style={{ borderRadius: "30px", padding: "8px 14px" }}
-                >
-                  <div className="text-start me-2" style={{ lineHeight: "1.1" }}>
-                    <strong>{user.username || "Usuario"}</strong>
-                    <div style={{ fontSize: "0.75rem", color: "#666" }}>Rol: {user.role}</div>
-                  </div>
-                </Dropdown.Toggle>
-
-                <Dropdown.Menu className="shadow-sm">
-                  <Dropdown.Item onClick={handleLogout} className="text-danger fw-semibold">
-                    Cerrar sesión
-                  </Dropdown.Item>
-                </Dropdown.Menu>
-              </Dropdown>
-            </Col>
-          </Row>
+          <Header
+            searchValue={searchTerm}
+            onSearch={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar por nombre o SKU..."
+            user={user}
+            onLogout={handleLogout}
+          />
 
           {/* Title and Add Product */}
           <Row className="align-items-center mb-3">
             <Col>
               <h2 className="fw-bold text-primary">Productos</h2>
+            </Col>
+            <Col className="text-end">
+              <Button variant="info" className="me-2" onClick={() => exportToExcel(sortedProducts, "productos")}>
+                Exportar
+              </Button>
             </Col>
             <Col className="text-end">
               <Button variant="primary" onClick={() => setShowModal(true)}>
@@ -223,7 +221,7 @@ export default function ProductsPage() {
 
           {/* Products Table */}
           <div className="rounded-4 overflow-hidden shadow-sm">
-            <Table striped hover responsive className="m-0">
+            <PanelContainer>
               <thead className="table-light">
                 <tr>
                   <th onClick={() => handleSort("name")} style={{ cursor: "pointer" }}>
@@ -302,7 +300,7 @@ export default function ProductsPage() {
                   </tr>
                 )}
               </tbody>
-            </Table>
+            </PanelContainer>
           </div>
 
           {/* Modal Product */}
@@ -388,6 +386,13 @@ export default function ProductsPage() {
               </Form>
             </Modal.Body>
           </Modal>
+
+          <ToastComponent
+            show={toast.show}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast({ ...toast, show: false })}
+          />
         </Container>
       </div>
     </ProtectedRoute>

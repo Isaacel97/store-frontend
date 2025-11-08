@@ -1,10 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
-import { Table, Button, Modal, Form, Container, Row, Col, InputGroup, Dropdown } from "react-bootstrap";
-import { BsSearch, BsThreeDotsVertical, BsArrowUp, BsArrowDown, BsPlusLg } from "react-icons/bs";
-import ProtectedRoute from "../components/ProtectedRoute";
-import Sidebar from "../components/Sidebar";
+import { Table, Button, Modal, Form, Container, Row, Col, Dropdown } from "react-bootstrap";
+import { BsThreeDotsVertical, BsArrowUp, BsArrowDown, BsPlusLg } from "react-icons/bs";
 import { getEmployees, createEmployee, getShiftsByUser, createShift, clockIn, clockOut } from "../api/employees";
 import { useRouter } from "next/router";
+import {ProtectedRoute, Sidebar, ToastComponent, PanelContainer, Header} from "@/components";
 
 export default function EmployeesPage() {
   const DEFAULT_AVATAR = "https://png.pngtree.com/element_our/20190528/ourmid/pngtree-no-photo-icon-image_1128432.jpg";
@@ -20,7 +19,17 @@ export default function EmployeesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const router = useRouter();
-  const user = JSON.parse(localStorage.getItem("me") || "{}");
+  const [user, setUser] = useState({});
+  const [toast, setToast] = useState({
+    show: false,
+    message: "",
+    type: "error",
+  });
+
+  useEffect(() => {
+    const storedUser = JSON.parse(localStorage.getItem("me") || "{}");
+    setUser(storedUser);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -34,7 +43,11 @@ export default function EmployeesPage() {
       setEmployees(u);
     } catch (err) {
       console.error(err);
-      alert("Error cargando empleados");
+      setToast({
+        show: true,
+        message: "Error cargando empleados",
+        type: "error",
+      });
     }
   };
 
@@ -49,7 +62,11 @@ export default function EmployeesPage() {
       fetchAll();
     } catch (err) {
       console.error(err);
-      alert("Error creando usuario");
+      setToast({
+        show: true,
+        message: "Error creando usuario",
+        type: "error",
+      });
     }
   };
 
@@ -73,27 +90,48 @@ export default function EmployeesPage() {
       if (selected) handleSelect(selected);
     } catch (err) {
       console.error(err);
-      alert("Error creando turno");
+      setToast({
+        show: true,
+        message: "Error creando turno",
+        type: "error",
+      });
     }
   };
 
   const handleClockIn = async (userId, shift_id) => {
     try {
       await clockIn(userId, shift_id);
-      alert("Check-in registrado");
+      setToast({
+        show: true,
+        message: "Check-in registrado",
+        type: "success",
+      });
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.error || "Error en check-in");
+      setToast({
+        show: true,
+        message: err.response?.data?.error || "Error en check-in",
+        type: "error",
+      });
     }
   };
 
   const handleClockOut = async (userId) => {
     try {
       await clockOut(userId);
-      alert("Check-out registrado");
+      setToast({
+        show: true,
+        message: "Check-out registrado",
+        type: "success",
+      });
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.error || "Error en check-out");
+
+      setToast({
+        show: true,
+        message: err.response?.data?.error || "Error en check-out",
+        type: "error",
+      });
     }
   };
 
@@ -157,49 +195,13 @@ export default function EmployeesPage() {
       <div className="d-flex">
         <Sidebar />
         <Container className="mt-3">
-          {/* Search */}
-          <Row className="align-items-center mb-3">
-            <Col md={6}>
-              <InputGroup className="rounded-pill overflow-hidden shadow-sm">
-                <InputGroup.Text className="bg-white border-0">
-                  <BsSearch />
-                </InputGroup.Text>
-                <Form.Control
-                  type="text"
-                  placeholder="Buscar por nombre, usuario, email o ID..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="border-0"
-                />
-              </InputGroup>
-            </Col>
-
-            <Col md={6} className="text-end">
-              <Dropdown align="end">
-                <Dropdown.Toggle
-                  variant="light"
-                  className="shadow-sm d-flex align-items-center"
-                  style={{ borderRadius: "30px", padding: "8px 14px" }}
-                >
-                  <img
-                    src={user.image_url || DEFAULT_AVATAR}
-                    alt={user.username}
-                    style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", marginRight: 8 }}
-                  />
-                  <div className="text-start me-2" style={{ lineHeight: "1.1" }}>
-                    <strong>{user.username || "Usuario"}</strong>
-                    <div style={{ fontSize: "0.75rem", color: "#666" }}>Rol: {user.role}</div>
-                  </div>
-                </Dropdown.Toggle>
-
-                <Dropdown.Menu className="shadow-sm">
-                  <Dropdown.Item onClick={handleLogout} className="text-danger fw-semibold">
-                    Cerrar sesión
-                  </Dropdown.Item>
-                </Dropdown.Menu>
-              </Dropdown>
-            </Col>
-          </Row>
+          <Header
+            searchValue={searchTerm}
+            onSearch={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar por id, usuario o email..."
+            user={user}
+            onLogout={handleLogout}
+          />
 
           <Row className="align-items-center mb-3">
             <Col><h2 className="fw-bold text-primary">Empleados</h2></Col>
@@ -211,7 +213,7 @@ export default function EmployeesPage() {
           </Row>
 
           <div className="rounded-4 overflow-hidden shadow-sm">
-            <Table striped hover responsive className="m-0">
+            <PanelContainer>
               <thead className="table-light">
                 <tr>
                   <th onClick={() => handleSort("full_name")} style={{ cursor: "pointer" }}>
@@ -284,7 +286,7 @@ export default function EmployeesPage() {
                   </tr>
                 )}
               </tbody>
-            </Table>
+            </PanelContainer>
           </div>
 
           {/* Modal Crear Empleado (armonizado visualmente) */}
@@ -342,6 +344,13 @@ export default function EmployeesPage() {
               </Form>
             </Modal.Body>
           </Modal>
+
+          <ToastComponent
+            show={toast.show}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast({ ...toast, show: false })}
+          />
         </Container>
       </div>
     </ProtectedRoute>

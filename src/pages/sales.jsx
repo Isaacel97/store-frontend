@@ -1,11 +1,10 @@
 import { useEffect, useState, useMemo } from "react";
-import { Table, Button, Modal, Form, Container, Row, Col, InputGroup, Dropdown } from "react-bootstrap";
-import { BsSearch, BsArrowUp, BsArrowDown, BsPlusLg } from "react-icons/bs";
-import ProtectedRoute from "../components/ProtectedRoute";
-import Sidebar from "../components/Sidebar";
+import { Button, Modal, Form, Container, Row, Col } from "react-bootstrap";
+import { BsArrowUp, BsArrowDown, BsPlusLg } from "react-icons/bs";
 import { getSales, createSale, revertSale } from "../api/sales";
 import { getProducts } from "../api/products";
 import { useRouter } from "next/router";
+import {ProtectedRoute, Sidebar, ToastComponent, PanelContainer, Header} from "@/components";
 
 export default function SalesPage() {
   const [sales, setSales] = useState([]);
@@ -15,9 +14,9 @@ export default function SalesPage() {
   const [sellerId, setSellerId] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
-
   const router = useRouter();
-  const user = JSON.parse(localStorage.getItem("me") || "{}");
+  const [user, setUser] = useState({});
+  const [toast, setToast] = useState({ show: false, message: "", type: "info" });
 
   const fetchAll = async () => {
     try {
@@ -27,11 +26,13 @@ export default function SalesPage() {
       setProducts(p);
     } catch (err) {
       console.error(err);
-      alert("Error cargando ventas/productos");
+      setToast({ show: true, message: "Error cargando ventas/productos", type: "error" });
     }
   };
 
   useEffect(() => {
+    const storedUser = JSON.parse(localStorage.getItem("me") || "{}");
+    setUser(storedUser);
     const me = JSON.parse(localStorage.getItem("me") || "null");
     if (me) setSellerId(me.id);
     fetchAll();
@@ -61,7 +62,7 @@ export default function SalesPage() {
       fetchAll();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.error || "Error creando venta");
+      setToast({ show: true, message: err.response?.data?.error || "Error creando venta", type: "error" });
     }
   };
 
@@ -72,7 +73,7 @@ export default function SalesPage() {
       fetchAll();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.error || "Error al revertir");
+      setToast({ show: true, message: err.response?.data?.error || "Error al revertir", type: "error" });
     }
   };
 
@@ -133,49 +134,13 @@ export default function SalesPage() {
       <div className="d-flex">
         <Sidebar />
         <Container className="mt-3">
-          {/* Search + User */}
-          <Row className="align-items-center mb-3">
-            <Col md={6}>
-              <InputGroup className="rounded-pill overflow-hidden shadow-sm">
-                <InputGroup.Text className="bg-white border-0">
-                  <BsSearch />
-                </InputGroup.Text>
-                <Form.Control
-                  type="text"
-                  placeholder="Buscar por id, vendedor o fecha..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="border-0"
-                />
-              </InputGroup>
-            </Col>
-
-            <Col md={6} className="text-end">
-              <Dropdown align="end">
-                <Dropdown.Toggle
-                  variant="light"
-                  className="shadow-sm d-flex align-items-center"
-                  style={{ borderRadius: "30px", padding: "8px 14px" }}
-                >
-                  <img
-                    src={user.image_url || "https://png.pngtree.com/element_our/20190528/ourmid/pngtree-no-photo-icon-image_1128432.jpg"}
-                    alt={user.username}
-                    style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", marginRight: 8 }}
-                  />
-                  <div className="text-start me-2" style={{ lineHeight: "1.1" }}>
-                    <strong>{user.username || "Usuario"}</strong>
-                    <div style={{ fontSize: "0.75rem", color: "#666" }}>Rol: {user.role}</div>
-                  </div>
-                </Dropdown.Toggle>
-
-                <Dropdown.Menu className="shadow-sm">
-                  <Dropdown.Item onClick={handleLogout} className="text-danger fw-semibold">
-                    Cerrar sesión
-                  </Dropdown.Item>
-                </Dropdown.Menu>
-              </Dropdown>
-            </Col>
-          </Row>
+          <Header
+            searchValue={searchTerm}
+            onSearch={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar por id, vendedor o fecha..."
+            user={user}
+            onLogout={handleLogout}
+          />
 
           {/* Title + New Sale */}
           <Row className="align-items-center mb-3">
@@ -189,7 +154,7 @@ export default function SalesPage() {
 
           {/* Tabla armonizada */}
           <div className="rounded-4 overflow-hidden shadow-sm">
-            <Table striped hover responsive className="m-0">
+            <PanelContainer>
               <thead className="table-light">
                 <tr>
                   <th onClick={() => handleSort("id")} style={{ cursor: "pointer" }}>
@@ -226,7 +191,7 @@ export default function SalesPage() {
                   </tr>
                 )}
               </tbody>
-            </Table>
+            </PanelContainer>
           </div>
 
           {/* Modal Nueva Venta */}
@@ -261,6 +226,14 @@ export default function SalesPage() {
               </Form>
             </Modal.Body>
           </Modal>
+
+          {/* Toasts */}
+          <ToastComponent
+            show={toast.show}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(prev => ({ ...prev, show: false }))}
+          />
         </Container>
       </div>
     </ProtectedRoute>

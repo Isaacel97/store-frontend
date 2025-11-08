@@ -1,16 +1,17 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Container, Form, Button, Toast, ToastContainer, InputGroup } from "react-bootstrap";
+import { Container, Form, Button, InputGroup } from "react-bootstrap";
 import { login } from "../api/auth";
-import { FaCheckCircle, FaTimesCircle, FaEye, FaEyeSlash } from "react-icons/fa";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { playSound } from "../hooks/Sound"
+import ToastComponent from "../components/Toast"
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [toast, setToast] = useState({ show: false, message: "", variant: "", icon: null });
+  const [toast, setToast] = useState({ show: false, message: "", type: "success" });
   const router = useRouter();
 
   const handleSubmit = async (e) => {
@@ -25,8 +26,7 @@ export default function LoginPage() {
         setToast({
           show: true,
           message: res.data.message || "Login exitoso",
-          variant: "success",
-          icon: <FaCheckCircle size={20} className="me-2" />,
+          type: "success",
         });
         
         playSound("success");
@@ -41,8 +41,7 @@ export default function LoginPage() {
       setToast({
         show: true,
         message: "Usuario o contraseña incorrecta",
-        variant: "danger",
-        icon: <FaTimesCircle size={20} className="me-2" />,
+        type: "error",
       });
       playSound("error");
     }
@@ -103,20 +102,12 @@ export default function LoginPage() {
       </Form>
 
       {/* Toast con íconos */}
-      <ToastContainer position="top-end" className="p-3">
-        <Toast
-          show={toast.show}
-          onClose={() => setToast({ ...toast, show: false })}
-          delay={2500}
-          autohide
-          bg={toast.variant}
-        >
-          <Toast.Body className="d-flex align-items-center text-white fw-semibold">
-            {toast.icon}
-            {toast.message}
-          </Toast.Body>
-        </Toast>
-      </ToastContainer>
+      <ToastComponent
+        show={toast.show}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ ...toast, show: false })}
+      />
     </Container>
   );
 }

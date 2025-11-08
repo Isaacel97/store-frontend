@@ -1,10 +1,11 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Container, Form, Button, Toast, ToastContainer, InputGroup } from "react-bootstrap";
-import { FaCheckCircle, FaTimesCircle, FaEye, FaEyeSlash} from "react-icons/fa";
+import { Container, Form, Button, InputGroup } from "react-bootstrap";
+import { FaEye, FaEyeSlash} from "react-icons/fa";
 import { playSound } from "../hooks/Sound";
 import { register } from "../api/auth";
+import ToastComponent from "@/components/Toast";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -23,8 +24,7 @@ export default function RegisterPage() {
   const [toast, setToast] = useState({
     show: false,
     message: "",
-    variant: "",
-    icon: null,
+    type: "error",
   });
 
   const [passwordErrors, setPasswordErrors] = useState({
@@ -63,8 +63,7 @@ export default function RegisterPage() {
       setToast({
         show: true,
         message: "La contraseña no cumple con los requisitos.",
-        variant: "danger",
-        icon: <FaTimesCircle size={20} className="me-2" />,
+        type: "warning",
       });
       playSound("error");
       return;
@@ -74,8 +73,7 @@ export default function RegisterPage() {
       setToast({
         show: true,
         message: "Las contraseñas no coinciden.",
-        variant: "danger",
-        icon: <FaTimesCircle size={20} className="me-2" />,
+        type: "warning",
       });
       playSound("error");
       return;
@@ -88,8 +86,7 @@ export default function RegisterPage() {
         setToast({
           show: true,
           message: res.message || "Usuario creado con éxito",
-          variant: "success",
-          icon: <FaCheckCircle size={20} className="me-2" />,
+          type: "success",
         });
         playSound("success");
         setTimeout(() => router.push("/login"), 1500);
@@ -102,8 +99,7 @@ export default function RegisterPage() {
       setToast({
         show: true,
         message: msg,
-        variant: "danger",
-        icon: <FaTimesCircle size={20} className="me-2" />,
+        type: "error",
       });
       playSound("error");
     }
@@ -239,28 +235,12 @@ export default function RegisterPage() {
       </Form>
 
       {/* Toasts */}
-      <ToastContainer 
-        position="top-end" 
-        className="p-3"
-          style={{
-            position: "fixed",
-            top: "1rem",
-            zIndex: 9999,
-          }}
-      >
-        <Toast
-          show={toast.show}
-          onClose={() => setToast({ ...toast, show: false })}
-          delay={2500}
-          autohide
-          bg={toast.variant}
-        >
-          <Toast.Body className="d-flex align-items-center text-white fw-semibold">
-            {toast.icon}
-            {toast.message}
-          </Toast.Body>
-        </Toast>
-      </ToastContainer>
+      <ToastComponent
+        show={toast.show}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ ...toast, show: false })}
+      />
     </Container>
   );
 }
